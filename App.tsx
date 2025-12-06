@@ -7,11 +7,44 @@ import { calculateLifePath, calculateYearCode, determineHDType, determineTrapMod
 import { QuizQuestions, LifePathDB, YearCodeDB, HDEnergyDB } from './services/soulDatabase';
 
 // --- FEATURE TOGGLE ---
-const ENABLE_AI_QUIZ = false; // 強制關閉 AI 測驗，使用 A/B 選項以符合使用者需求
+const ENABLE_AI_QUIZ = false; 
 // ----------------------
 
-// Initialize Gemini API
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// --- SAFE API KEY RETRIEVAL (Fix for Vercel/Vite White Screen) ---
+const getApiKey = () => {
+  let key = '';
+  // 1. Try Vite Environment Variable (Standard for Vercel + Vite)
+  try {
+    // @ts-ignore
+    if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_KEY) {
+      // @ts-ignore
+      key = import.meta.env.VITE_API_KEY;
+    }
+  } catch (e) {
+    console.warn("Vite env access error", e);
+  }
+
+  // 2. Fallback to process.env (Node.js/Legacy)
+  if (!key) {
+    try {
+      // @ts-ignore
+      if (typeof process !== 'undefined' && process.env && process.env.API_KEY) {
+        // @ts-ignore
+        key = process.env.API_KEY;
+      }
+    } catch (e) {
+      console.warn("Process env access error", e);
+    }
+  }
+  
+  return key;
+};
+
+const API_KEY = getApiKey();
+
+// Initialize Gemini API with a dummy key if missing to prevent crash on load
+// We will check for valid key later
+const ai = new GoogleGenAI({ apiKey: API_KEY || 'placeholder_key' });
 
 // Helper to render text with bold markdown and line breaks
 const FormattedText = ({ text }: { text: string }) => {
@@ -56,6 +89,7 @@ function App() {
   const dayRef = useRef<HTMLInputElement>(null);
 
   const [loadingText, setLoadingText] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
   
   // Static Quiz State
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
@@ -72,6 +106,14 @@ function App() {
   const [chatSession, setChatSession] = useState<Chat | null>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const quizChatContainerRef = useRef<HTMLDivElement>(null);
+
+  // Check API Key on Mount
+  useEffect(() => {
+    if (!API_KEY || API_KEY === 'placeholder_key') {
+        console.error("API Key missing");
+        setErrorMessage("⚠️ 系統未檢測到 API Key。請確認 Vercel 環境變數名稱是否為 'VITE_API_KEY'。");
+    }
+  }, []);
 
   // Update full birthDate string whenever parts change
   useEffect(() => {
@@ -277,7 +319,7 @@ function App() {
           setChatHistory([{
               id: 'error',
               sender: 'system',
-              text: "靈魂數據庫連線不穩定，請重新啟動或稍後再試。"
+              text: "靈魂數據庫連線不穩定，可能是 API Key 設定問題，請檢查系統配置。"
           }]);
       }
   };
@@ -407,6 +449,12 @@ function App() {
           <p className="text-soul-sub font-mono text-xs tracking-[0.3em] uppercase">靈魂診斷系統 v6.0</p>
           <div className="mt-8 h-px w-full bg-gradient-to-r from-transparent via-soul-border to-transparent"></div>
         </div>
+        
+        {errorMessage && (
+            <div className="mb-6 p-3 bg-red-50 border border-red-200 text-red-700 text-sm font-sans rounded text-center">
+                {errorMessage}
+            </div>
+        )}
         
         <div className="space-y-10">
           <div className="relative group">
